@@ -1,0 +1,45 @@
+import org.ajoberstar.grgit.Grgit
+import org.ajoberstar.grgit.Person
+
+ext.repo = Grgit.open(project.file('.'))
+
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath('org.ajoberstar:gradle-git:1.2.0')
+    }
+}
+
+task release << {
+    // author & committer
+    def person = new Person('jenkins', 'jenkins@hoge.com')
+
+    repo.checkout(branch: 'master')
+    repo.merge(head: 'release')
+
+    // 設定ファイルからバージョン取得し+1
+    def newVersion = appVersion.replaceFirst(/([\-0-9]*)$/) { ++Integer.valueOf(it[0]) }
+
+    // 設定ファイルのバージョンを変更する
+    def file = new File("gradle.properties")
+    def replaceText = file.getText().replaceFirst(/^(appVersion\s*=\s*)(.*)$/) { it[1] + newVersion }
+    file.write(replaceText)
+
+    repo.add(patterns: ['gradle.properties'])
+    repo.commit(message: "release version $newVersion", author: person, committer:person)
+
+    repo.tag.add(name:newVersion)
+
+    repo.push()
+    repo.push(tags: true)
+
+    // バージョン管理ファイルで競合が発生するのでマージ先のファイルも変更する
+    // git checkout master gradle.properties は無い?
+    repo.checkout(branch: 'release')
+    file.write(replaceText)
+    repo.add(patterns: ['gradle.properties'])
+    repo.commit(message: "release version $newVersion", author: person, committer:person)
+    repo.push()
+}
